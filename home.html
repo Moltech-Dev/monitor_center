@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="refresh" content="600">
+  <title>Monitor Center</title>
+  <link rel="icon" type="image/png" href="logo2.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    /* VARIABLES */
+    :root{
+      --bg:#e9e8e6;
+      --surface:#ffffff;
+      --accent:#3b82f6;
+      --accent2:#6366f1;
+      --success:#10b981;
+      --warning:#f59e0b;
+      --danger:#ef4444;
+      --text:#1e293b;
+      --text-muted:#64748b;
+      --border:#e2e8f0;
+      --radius:14px;
+      --shadow:0 4px 20px rgba(0,0,0,.07);
+    }
+
+    /* RESET */
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%;overflow:hidden}
+    body{
+      background:var(--bg);display:flex;flex-direction:column;
+      height:100vh;font-family:'Inter',Arial,sans-serif;color:var(--text);
+    }
+
+    /* HEADER */
+    header{
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;
+      z-index:1000;padding:.75rem 1.25rem;
+      background:linear-gradient(135deg,#0d1117 0%,#1e3a5f 100%);
+      color:#fff;box-shadow:0 2px 20px rgba(0,0,0,.3);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .logo{height:52px;position:absolute;left:1.25rem}
+    .titulo-3d{
+      font-size:1.55rem;font-weight:800;text-align:center;letter-spacing:2px;
+      background:linear-gradient(135deg,#fff 0%,#93c5fd 55%,#c4b5fd 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .user-chip{
+      position:absolute;right:1.25rem;display:flex;align-items:center;gap:.5rem;
+      background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+      border-radius:999px;padding:.35rem .85rem;font-size:.85rem;
+      backdrop-filter:blur(6px);
+    }
+    .user-chip .logout{
+      border:none;background:rgba(239,68,68,.85);color:#fff;
+      padding:.25rem .7rem;border-radius:999px;cursor:pointer;font-size:.8rem;font-weight:600;
+      transition:background .2s;
+    }
+    .user-chip .logout:hover{background:#dc2626}
+
+    /* LAYOUT */
+    .container{display:flex;flex:1;min-height:0;overflow:hidden}
+    .sidebar{
+      width:60px;background:#0d1117;color:#fff;
+      padding:.75rem .4rem;transition:width .25s cubic-bezier(.4,0,.2,1);overflow-x:hidden;
+      border-right:1px solid rgba(255,255,255,.05);
+    }
+    .sidebar:hover{width:185px}
+    .sidebar ul{list-style:none}
+    .sidebar a{
+      display:flex;align-items:center;gap:.6rem;color:rgba(255,255,255,.6);
+      text-decoration:none;padding:.6rem .5rem;border-radius:10px;margin-bottom:4px;
+      font-size:.875rem;transition:all .2s ease;
+    }
+    .sidebar a:hover{background:rgba(255,255,255,.08);color:#fff}
+    .sidebar a .label{display:none;white-space:nowrap;font-weight:500}
+    .sidebar:hover a .label{display:inline}
+    .sidebar a.active{
+      background:rgba(59,130,246,.15);color:var(--accent);
+      box-shadow:inset 4px 0 0 var(--accent);font-weight:600;
+    }
+    .sidebar a.active i{color:var(--accent)}
+
+    .main-content{flex:1;padding:1.25rem;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+    .section-title{font-size:1.1rem;margin-bottom:1rem;font-weight:700;color:var(--text);letter-spacing:-.01em}
+
+    /* TARJETAS */
+    .cards-container{display:flex;gap:1rem;margin-bottom:1rem;flex-wrap:wrap}
+    .card{
+      position:relative;overflow:hidden;cursor:pointer;user-select:none;
+      display:flex;flex-direction:column;justify-content:center;align-items:center;
+      min-width:100px;max-width:130px;height:96px;flex:1 1 100px;
+      border:none;border-radius:18px;padding:.75rem;text-align:center;
+      color:#fff;font-family:inherit;
+      box-shadow:0 4px 16px rgba(0,0,0,.18);
+      transition:transform .2s ease,box-shadow .2s ease,filter .2s ease;
+      outline:0 solid transparent;
+    }
+    .card h3{font-size:.78rem;font-weight:600;margin-bottom:.3rem;opacity:.9;text-transform:uppercase;letter-spacing:.05em}
+    .card p{font-size:1.6rem;font-weight:800;line-height:1}
+
+    #cardTodos{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
+    #cardPendientes{background:linear-gradient(135deg,#ef4444,#991b1b)}
+    #cardSeguimiento{background:linear-gradient(135deg,#f59e0b,#d97706)}
+
+    .card:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 12px 28px rgba(0,0,0,.22);filter:brightness(1.04)}
+    .card:active{transform:translateY(0) scale(.98)}
+    .card.active{transform:translateY(-3px) scale(1.015)}
+    #cardTodos.active{box-shadow:0 0 0 3px rgba(59,130,246,.35),0 12px 28px rgba(0,0,0,.2)}
+    #cardPendientes.active{box-shadow:0 0 0 3px rgba(239,68,68,.35),0 12px 28px rgba(0,0,0,.2)}
+    #cardSeguimiento.active{box-shadow:0 0 0 3px rgba(245,158,11,.4),0 12px 28px rgba(0,0,0,.2)}
+    .card:focus-visible{outline:3px solid rgba(59,130,246,.45)}
+    #cardPendientes:focus-visible{outline-color:rgba(239,68,68,.45)}
+    #cardSeguimiento:focus-visible{outline-color:rgba(245,158,11,.55)}
+
+    .card .ripple{
+      position:absolute;border-radius:50%;
+      transform:scale(0);opacity:.5;pointer-events:none;
+      background:#fff;mix-blend-mode:screen;
+      animation:ripple .6s ease-out forwards;
+    }
+    @keyframes ripple{to{transform:scale(6);opacity:0}}
+
+    /* BÚSQUEDA */
+    .search-wrap{margin-top:.5rem;text-align:left}
+    .search-input{
+      padding:8px 14px;width:400px;font-size:13px;font-family:inherit;
+      border:1.5px solid var(--border);border-radius:10px;outline:none;
+      background:var(--surface);color:var(--text);
+      transition:border-color .2s,box-shadow .2s;
+    }
+    .search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+    .search-input::placeholder{color:var(--text-muted)}
+
+    /* HOME */
+    #secInicio{display:flex;flex-direction:column;flex:1;min-height:0}
+    .top-toolbar{background:var(--bg);padding-bottom:.5rem;flex-shrink:0}
+    .home-hero{
+      display:grid;grid-template-columns:minmax(360px,540px) minmax(320px,1fr);
+      gap:1rem;align-items:stretch;margin-bottom:.75rem;
+    }
+    .home-hero-main{display:flex;flex-direction:column;gap:.75rem}
+    .home-map-card{
+      min-height:150px;background:linear-gradient(135deg,#eef4ff 0%,#f8fafc 100%);
+      border:1px solid rgba(59,130,246,.14);border-radius:22px;box-shadow:var(--shadow);
+      overflow:hidden;position:relative;
+    }
+    .home-map-head{
+      position:absolute;top:0;left:0;right:0;z-index:2;
+      display:flex;align-items:center;justify-content:space-between;gap:1rem;
+      padding:.85rem 1rem;background:linear-gradient(180deg,rgba(15,23,42,.78) 0%,rgba(15,23,42,.35) 70%,rgba(15,23,42,0) 100%);
+      color:#fff;
+    }
+    .home-map-title{font-size:.9rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+    .home-map-subtitle{font-size:.78rem;opacity:.9}
+    .home-map-chip{
+      display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .65rem;border-radius:999px;
+      background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.15);font-size:.75rem;font-weight:700;
+      backdrop-filter:blur(4px);
+    }
+    #homeMap{height:100%;min-height:190px;width:100%}
+    .home-map-empty{
+      height:100%;display:flex;align-items:center;justify-content:center;padding:1.25rem;text-align:center;
+      color:var(--text-muted);font-size:.9rem;line-height:1.5;
+      background:radial-gradient(circle at top left,rgba(59,130,246,.12),transparent 38%),linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);
+    }
+    .home-map-popup{font-size:.82rem;line-height:1.45}
+    .home-map-popup strong{display:block;color:#0f172a;margin-bottom:.15rem}
+    .home-map-popup button{
+      margin-top:.45rem;border:none;border-radius:8px;padding:.4rem .65rem;cursor:pointer;
+      background:#1d4ed8;color:#fff;font:inherit;font-weight:700;
+    }
+    @media(max-width:1100px){
+      .home-hero{grid-template-columns:1fr}
+    }
+    .tabla-scroll{
+      flex:1;min-height:0;overflow:auto;
+      border-radius:var(--radius);box-shadow:var(--shadow);
+      background:var(--surface);margin-top:.5rem;
+      border:1px solid var(--border);
+    }
+
+    /* TABLA */
+    .table{width:100%;border-collapse:collapse;margin:0}
+    .table th{
+      padding:.7rem 1rem;border-bottom:2px solid var(--border);
+      font-size:.72rem;font-weight:700;color:var(--text-muted);
+      text-transform:uppercase;letter-spacing:.07em;
+      background:#f5f4f2;text-align:left;position:sticky;top:0;z-index:2;
+    }
+    .table td{
+      padding:.65rem 1rem;border-bottom:1px solid #f1f5f9;
+      font-size:.88rem;color:var(--text);
+    }
+    .table tbody tr{transition:background .15s ease;cursor:pointer}
+    .table tbody tr:hover{background:#eff6ff}
+    .table tbody tr:last-child td{border-bottom:none}
+
+    /* PÍLDORA */
+    .pill{
+      display:inline-block;padding:.25rem .7rem;border-radius:999px;
+      font-size:.72rem;font-weight:700;background:#94a3b8;color:#fff;
+      text-transform:uppercase;letter-spacing:.05em;
+    }
+
+    .oculto{display:none !important}
+
+    /* FOOTER */
+    footer{background:#0d1117;color:rgba(255,255,255,.45);text-align:center;padding:.6rem;font-size:.8rem;flex-shrink:0}
+    footer a,footer a:visited{color:rgba(255,255,255,.45);text-decoration:none;transition:color .2s}
+    footer a:hover{color:rgba(255,255,255,.8)}
+
+    /* MODAL */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:4000;backdrop-filter:blur(4px)}
+    .modal-box{
+      position:fixed;top:5%;left:50%;transform:translateX(-50%);
+      width:min(980px,93vw);background:var(--surface);
+      border-radius:20px;z-index:4001;
+      box-shadow:0 24px 60px rgba(0,0,0,.2);
+      border:1px solid var(--border);overflow:hidden;
+    }
+    .modal-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:16px 20px;border-bottom:1px solid var(--border);background:#f5f4f2;
+    }
+    .modal-body{display:grid;grid-template-columns:1.1fr .9fr;gap:20px;padding:20px}
+
+    .btn{
+      border:none;cursor:pointer;border-radius:10px;padding:8px 16px;
+      font-size:.85rem;font-weight:600;font-family:inherit;
+      transition:transform .15s,box-shadow .15s,filter .15s;
+    }
+    .btn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.15);filter:brightness(1.06)}
+    .btn:active{transform:translateY(0);box-shadow:none}
+    .btn-primary{background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff}
+    .btn-success{background:linear-gradient(135deg,#10b981,#059669);color:#fff}
+    .btn-danger{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff}
+    .btn-whats{background:linear-gradient(135deg,#25D366,#128C7E);color:#fff}
+
+    @media(max-width:840px){.modal-body{grid-template-columns:1fr}}
+
+    /* MAPA */
+    .map-wrap{height:260px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:#f2f2f2;margin-bottom:8px}
+    #detMap{height:100%;width:100%}
+
+    /* ACCIONES */
+    .actions-row{display:flex;gap:.5rem;flex-wrap:wrap}
+
+    /* TEXTAREA */
+    #detComentario{
+      width:100%;border:1.5px solid var(--border);border-radius:12px;
+      padding:10px 12px;resize:vertical;font-family:inherit;font-size:.875rem;
+      color:var(--text);transition:border-color .2s,box-shadow .2s;outline:none;
+      background:var(--surface);
+    }
+    #detComentario:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+
+    /* ======= DASHBOARD ======= */
+    #secDashboard{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;gap:1rem;padding-bottom:1rem}
+    .rpt-filters{
+      display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;flex-shrink:0;
+      background:var(--surface);padding:.85rem 1rem;border-radius:var(--radius);
+      border:1px solid var(--border);box-shadow:var(--shadow);
+    }
+    .rpt-filters label{font-size:.82rem;font-weight:600;color:var(--text-muted);display:flex;align-items:center;gap:.4rem}
+    .rpt-filters input[type="date"]{
+      padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;
+      font-family:inherit;font-size:.82rem;color:var(--text);outline:none;
+      transition:border-color .2s;
+    }
+    .rpt-filters input[type="date"]:focus{border-color:var(--accent)}
+
+    .rpt-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;flex-shrink:0}
+    .rpt-card{
+      background:var(--surface);border-radius:var(--radius);
+      padding:1rem 1rem .85rem;text-align:center;box-shadow:var(--shadow);
+      border-left:4px solid transparent;position:relative;overflow:hidden;
+      transition:transform .15s,box-shadow .15s;
+    }
+    .rpt-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.1)}
+    .rpt-card-icon{font-size:1.4rem;margin-bottom:.35rem;display:block}
+    .rpt-card-num{display:block;font-size:2.2rem;font-weight:800;line-height:1.1}
+    .rpt-card-label{font-size:.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-top:.2rem;display:block}
+    .rpt-card.total{border-left-color:#3b82f6;background:linear-gradient(135deg,#eff6ff 0%,#fff 100%)}
+    .rpt-card.total .rpt-card-icon{color:#3b82f6}
+    .rpt-card.total .rpt-card-num{color:#1d4ed8}
+    .rpt-card.pending{border-left-color:#ef4444;background:linear-gradient(135deg,#fef2f2 0%,#fff 100%)}
+    .rpt-card.pending .rpt-card-icon{color:#ef4444}
+    .rpt-card.pending .rpt-card-num{color:#dc2626}
+    .rpt-card.seguim{border-left-color:#f59e0b;background:linear-gradient(135deg,#fffbeb 0%,#fff 100%)}
+    .rpt-card.seguim .rpt-card-icon{color:#f59e0b}
+    .rpt-card.seguim .rpt-card-num{color:#d97706}
+    .rpt-card.done{border-left-color:#10b981;background:linear-gradient(135deg,#ecfdf5 0%,#fff 100%)}
+    .rpt-card.done .rpt-card-icon{color:#10b981}
+    .rpt-card.done .rpt-card-num{color:#059669}
+
+    .rpt-charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    @media(max-width:900px){.rpt-charts{grid-template-columns:1fr}.rpt-summary{grid-template-columns:repeat(2,1fr)}}
+    .rpt-chart-box{
+      background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+      padding:1rem;box-shadow:var(--shadow);
+    }
+    .rpt-chart-box h4{font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:.75rem}
+    .rpt-bar-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem;font-size:.78rem}
+    .rpt-bar-label{min-width:200px;max-width:280px;width:auto;text-align:right;color:var(--text-muted);font-weight:500;white-space:normal;word-break:break-word;line-height:1.3}
+    .event-label{
+      display:inline-flex;align-items:center;gap:.45rem;line-height:1.3;
+    }
+    .event-label i{
+      width:16px;min-width:16px;text-align:center;color:#64748b;
+    }
+    .rpt-bar-label .event-label{
+      justify-content:flex-end;width:100%;
+    }
+    .rpt-bar-track{flex:1;height:22px;background:#f1f5f9;border-radius:6px;overflow:hidden}
+    .rpt-bar-fill{height:100%;border-radius:6px;transition:width .5s ease;display:flex;align-items:center;padding-left:8px;
+      font-size:.72rem;font-weight:700;color:#fff;min-width:24px}
+    .rpt-bar-count{width:32px;text-align:right;font-weight:700;color:var(--text);font-size:.78rem}
+    .rpt-empty{text-align:center;color:var(--text-muted);padding:2rem;font-size:.9rem}
+    .rpt-detail-box{
+      background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+      padding:1rem;box-shadow:var(--shadow);
+    }
+    .rpt-detail-box h4{font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:.75rem}
+    .rpt-user-chip{
+      display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .55rem;border-radius:999px;
+      background:#eff6ff;color:#1d4ed8;font-size:.76rem;font-weight:700;
+    }
+
+    /* USUARIOS */
+    #secUsuarios{display:flex;flex-direction:column;gap:1rem;overflow:hidden}
+    .users-toolbar{
+      display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+      background:var(--surface);padding:.9rem 1rem;border-radius:var(--radius);
+      border:1px solid var(--border);box-shadow:var(--shadow);
+    }
+    .users-tools{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
+    .users-status{font-size:.82rem;color:var(--text-muted)}
+    .users-search{
+      min-width:260px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;
+      font-size:.84rem;font-family:inherit;outline:none;background:var(--surface);color:var(--text);
+    }
+    .users-search:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+    #usuariosContainer{
+      flex:1;min-height:0;overflow:auto;background:var(--surface);
+      border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);
+    }
+    .users-actions{display:flex;gap:.45rem;flex-wrap:wrap}
+    .btn-icon{
+      border:none;border-radius:8px;padding:.4rem .7rem;cursor:pointer;font-size:.8rem;
+      font-weight:700;font-family:inherit;transition:transform .15s,filter .15s,box-shadow .15s;
+    }
+    .btn-icon:hover{transform:translateY(-1px);filter:brightness(1.03);box-shadow:0 4px 12px rgba(0,0,0,.12)}
+    .btn-edit{background:#eff6ff;color:#1d4ed8}
+    .btn-delete{background:#fef2f2;color:#dc2626}
+    .admin-only.oculto-admin{display:none !important}
+
+    /* MODAL USUARIOS */
+    .user-modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:4100;backdrop-filter:blur(4px)}
+    .user-modal{
+      position:fixed;top:8%;left:50%;transform:translateX(-50%);
+      width:min(620px,92vw);background:var(--surface);border-radius:20px;
+      border:1px solid var(--border);box-shadow:0 24px 60px rgba(0,0,0,.22);z-index:4101;overflow:hidden;
+    }
+    .user-modal-header{
+      display:flex;align-items:center;justify-content:space-between;gap:1rem;
+      padding:16px 20px;border-bottom:1px solid var(--border);background:#f8fafc;
+    }
+    .user-modal-form{padding:20px}
+    .user-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .user-field{display:flex;flex-direction:column;gap:6px}
+    .user-field.full{grid-column:1 / -1}
+    .user-field label{font-size:.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
+    .user-field input,.user-field select{
+      width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;
+      font-size:.9rem;font-family:inherit;color:var(--text);background:var(--surface);outline:none;
+      transition:border-color .2s,box-shadow .2s;
+    }
+    .user-field input:focus,.user-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+    .user-modal-actions{display:flex;justify-content:flex-end;gap:.65rem;margin-top:18px;flex-wrap:wrap}
+    @media(max-width:720px){
+      .user-form-grid{grid-template-columns:1fr}
+      .users-toolbar{align-items:stretch}
+      .users-tools{width:100%}
+      .users-search{min-width:0;width:100%}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="MC.png" alt="Logo" class="logo">
+    <h1 class="titulo-3d">Monitor Center S.L.P.</h1>
+    <div class="user-chip">
+      <i class="fa-solid fa-user-shield"></i>
+      <span id="chipUser">—</span>
+      <button class="logout" id="btnLogout" title="Cerrar sesión">Salir</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <ul>
+        <li><a href="#" id="linkInicio" class="active"><i class="fas fa-home"></i><span class="label">Inicio</span></a></li>
+        <li><a href="#" id="linkDashboard"><i class="fas fa-chart-line"></i><span class="label">Dashboard</span></a></li>
+        <li><a href="#" id="linkUsuarios"><i class="fas fa-users"></i><span class="label">Usuarios</span></a></li>
+      </ul>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main-content">
+      <!-- INICIO -->
+      <section id="secInicio">
+        <!-- Barra superior: se vuelve sticky SOLO en Home -->
+        <div id="toolbarAlerts" class="top-toolbar">
+          <div class="section-title">Monitor de Alertas</div>
+
+          <div class="home-hero">
+            <div class="home-hero-main">
+              <div class="cards-container">
+                <button type="button" class="card" id="cardTodos" aria-pressed="true" title="Ver todos">
+                  <h3>Todos</h3><p id="nTodos">0</p>
+                </button>
+                <button type="button" class="card" id="cardPendientes" aria-pressed="false" title="Ver pendientes">
+                  <h3>Pendientes</h3><p id="nPendientes">0</p>
+                </button>
+                <button type="button" class="card" id="cardSeguimiento" aria-pressed="false" title="Ver seguimiento">
+                  <h3>Seguimiento</h3><p id="nSeguimiento">0</p>
+                </button>
+              </div>
+
+              <div class="search-wrap">
+                <input class="search-input" id="busquedaEventos" type="text" placeholder="Buscar Alertas...">
+              </div>
+            </div>
+
+            <div class="home-map-card">
+              <div class="home-map-head">
+                <div>
+                  <div class="home-map-title">Mapa General</div>
+                  <div class="home-map-subtitle" id="homeMapSubtitle">Ubicaciones de las alertas visibles en la tarjeta actual.</div>
+                </div>
+                <div class="home-map-chip" id="homeMapCount"><i class="fas fa-location-dot"></i> 0 ubicaciones</div>
+              </div>
+              <div id="homeMap"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SOLO la tabla scrollea -->
+        <div class="tabla-scroll">
+          <table class="table" id="tablaEventos">
+            <thead>
+              <tr>
+                <th><i class="fas fa-flag" style="margin-right:5px;opacity:.7"></i>Prioridad</th>
+                <th><i class="fas fa-clock" style="margin-right:5px;opacity:.7"></i>Generado</th>
+                <th><i class="fas fa-bell" style="margin-right:5px;opacity:.7"></i>Evento</th>
+                <th><i class="fas fa-truck" style="margin-right:5px;opacity:.7"></i>Unidad</th>
+                <th><i class="fas fa-circle-check" style="margin-right:5px;opacity:.7"></i>Estatus</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyEventos"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- DASHBOARD -->
+      <section id="secDashboard" class="oculto">
+        <div class="section-title"><i class="fas fa-chart-bar" style="margin-right:6px;opacity:.7"></i>Dashboard</div>
+
+        <!-- Filtros -->
+        <div class="rpt-filters">
+          <label><i class="fas fa-calendar"></i> Desde
+            <input type="date" id="rptDesde">
+          </label>
+          <label><i class="fas fa-calendar"></i> Hasta
+            <input type="date" id="rptHasta">
+          </label>
+          <button class="btn btn-primary" id="btnGenReport"><i class="fas fa-search"></i> Generar</button>
+          <button class="btn" id="btnExportCSV" style="background:#334155;color:#fff"><i class="fas fa-file-csv"></i> Exportar CSV</button>
+        </div>
+
+        <!-- Resumen -->
+        <div class="rpt-summary">
+          <div class="rpt-card total">
+            <span class="rpt-card-icon"><i class="fas fa-layer-group"></i></span>
+            <span class="rpt-card-num" id="rptTotal">0</span>
+            <span class="rpt-card-label">Total Alertas</span>
+          </div>
+          <div class="rpt-card pending">
+            <span class="rpt-card-icon"><i class="fas fa-exclamation-triangle"></i></span>
+            <span class="rpt-card-num" id="rptPendientes">0</span>
+            <span class="rpt-card-label">Pendientes</span>
+          </div>
+          <div class="rpt-card seguim">
+            <span class="rpt-card-icon"><i class="fas fa-hourglass-half"></i></span>
+            <span class="rpt-card-num" id="rptSeguimiento2">0</span>
+            <span class="rpt-card-label">Seguimiento</span>
+          </div>
+          <div class="rpt-card done">
+            <span class="rpt-card-icon"><i class="fas fa-circle-check"></i></span>
+            <span class="rpt-card-num" id="rptAtendidos">0</span>
+            <span class="rpt-card-label">Atendidos</span>
+          </div>
+        </div>
+
+        <!-- Gráficas -->
+        <div class="rpt-charts">
+          <div class="rpt-chart-box">
+            <h4><i class="fas fa-bell" style="margin-right:5px;opacity:.6"></i>Alertas por Tipo de Evento</h4>
+            <div id="chartEvento"></div>
+          </div>
+          <div class="rpt-chart-box">
+            <h4><i class="fas fa-truck" style="margin-right:5px;opacity:.6"></i>Alertas por Unidad</h4>
+            <div id="chartUnidad"></div>
+          </div>
+          <div class="rpt-chart-box">
+            <h4><i class="fas fa-users" style="margin-right:5px;opacity:.6"></i>Alertas Tomadas por Usuario</h4>
+            <div id="chartUsuario"></div>
+          </div>
+        </div>
+
+        <div class="rpt-detail-box">
+          <h4><i class="fas fa-list" style="margin-right:5px;opacity:.6"></i>Detalle de Alertas y Usuario</h4>
+          <div class="table-wrap">
+            <table class="table" id="tablaDashboardDetalle">
+              <thead>
+                <tr>
+                  <th>Folio</th>
+                  <th>Generado</th>
+                  <th>Unidad</th>
+                  <th>Evento</th>
+                  <th>Estatus</th>
+                  <th>Tomado por</th>
+                  <th>Fecha atención</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyDashboardDetalle"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- USUARIOS -->
+      <section id="secUsuarios" class="oculto">
+        <div class="section-title">Usuarios</div>
+        <div class="users-toolbar">
+          <div class="users-status" id="usersStatus">Consulta y administra los usuarios.</div>
+          <div class="users-tools">
+            <input id="usersSearch" class="users-search" type="text" placeholder="Buscar usuario, rol, correo o estado">
+            <button class="btn btn-primary admin-only" id="btnNuevoUsuario"><i class="fas fa-user-plus"></i> Nuevo usuario</button>
+            <button class="btn" id="btnRecargarUsuarios" style="background:#334155;color:#fff"><i class="fas fa-rotate-right"></i> Recargar</button>
+          </div>
+        </div>
+        <div id="usuariosContainer" class="table-wrap">
+          <table class="table" id="tablaUsuarios">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Rol</th>
+                <th>Correo</th>
+                <th>Estado</th>
+                <th class="admin-only">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyUsuarios"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <p class="footer-line">
+      <a href="https://www.monitorcenterslp.com///" target="_blank" rel="noopener" title="Visitar https://moltech.com.mx/">
+        <strong>Monitor Center S.L.P. © 2026</strong>
+      </a>
+    </p>
+  </footer>
+
+  <!-- ========= MODAL DETALLE ========= -->
+  <div id="modalBg" class="modal-bg oculto" aria-hidden="true"></div>
+
+  <div id="userModalBg" class="user-modal-bg oculto" aria-hidden="true"></div>
+  <section id="modalUsuario" class="user-modal oculto" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+    <div class="user-modal-header">
+      <h3 id="userModalTitle" style="margin:0;font-size:18px">Usuario</h3>
+      <button id="btnCloseUserModal" class="btn btn-danger" type="button">Cerrar</button>
+    </div>
+    <form id="userForm" class="user-modal-form">
+      <div class="user-form-grid">
+        <div class="user-field">
+          <label for="userUsuario">Usuario</label>
+          <input id="userUsuario" name="usuario" type="text" maxlength="80" autocomplete="off" required>
+        </div>
+        <div class="user-field">
+          <label for="userPassword">Contrasena</label>
+          <input id="userPassword" name="password" type="password" maxlength="120" autocomplete="new-password" required>
+        </div>
+        <div class="user-field">
+          <label for="userRol">Rol</label>
+          <select id="userRol" name="rol" required>
+            <option value="admin">admin</option>
+            <option value="supervisor">supervisor</option>
+            <option value="monitorista">monitorista</option>
+          </select>
+        </div>
+        <div class="user-field">
+          <label for="userEstado">Estado</label>
+          <select id="userEstado" name="estado" required>
+            <option value="ACTIVO">ACTIVO</option>
+            <option value="SUSPENDIDO">SUSPENDIDO</option>
+            <option value="INACTIVO">INACTIVO</option>
+          </select>
+        </div>
+        <div class="user-field full">
+          <label for="userCorreo">Correo</label>
+          <input id="userCorreo" name="correo" type="email" maxlength="160" autocomplete="off">
+        </div>
+      </div>
+      <div class="user-modal-actions">
+        <button id="btnCancelarUserModal" class="btn" type="button" style="background:#e2e8f0;color:#0f172a">Cancelar</button>
+        <button id="btnGuardarUsuario" class="btn btn-primary" type="submit"><i class="fas fa-floppy-disk"></i> Guardar</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="modalCaso" class="modal-box oculto" role="dialog" aria-modal="true" aria-labelledby="detTitulo">
+    <div class="modal-header">
+      <h3 id="detTitulo" style="margin:0;font-size:18px">—</h3>
+      <button id="btnCloseModal" class="btn btn-danger" title="Cerrar">Cerrar ✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Columna izquierda -->
+      <div>
+        <div style="margin-bottom:8px">
+          <strong>Fecha:</strong> <span id="detFecha">—</span>
+        </div>
+        <div style="margin-bottom:8px">
+          <strong>Unidad:</strong> <span id="detUnidad">—</span>
+        </div>
+        <div style="margin-bottom:8px">
+          <strong>Estatus:</strong> <span id="detEstatus" class="pill">—</span>
+        </div>
+
+        <!-- Dirección -->
+        <div style="margin-bottom:8px">
+          <strong>Dirección:</strong>
+          <span id="detDireccion">—</span>
+          <button id="btnCopyDir" class="btn" title="Copiar dirección" style="margin-left:6px">
+            <i class="fa-regular fa-copy"></i> Copiar
+          </button>
+        </div>
+
+        <!-- Mapa embebido -->
+        <div id="detMapWrap" class="map-wrap"><div id="detMap"></div></div>
+
+        <!-- Link alterno a Google Maps -->
+        <div style="margin:8px 0 12px">
+          <a id="detMapa" href="#" target="_blank" rel="noopener">Abrir en Google Maps ↗</a>
+        </div>
+
+        <!-- Acciones bajo el mapa (sin Guardar aquí) -->
+        <div class="actions-row">
+          <button id="btnWhats"    class="btn btn-whats" title="Enviar por WhatsApp">
+            <i class="fa-brands fa-whatsapp"></i> WhatsApp
+          </button>
+          <button id="btnAtendido" class="btn btn-success">Marcar como Atendido</button>
+        </div>
+      </div>
+
+      <!-- Columna derecha: comentario + Guardar debajo -->
+      <div>
+        <label for="detComentario" style="display:block;font-weight:600;margin-bottom:6px">Comentario</label>
+        <textarea id="detComentario" rows="8" placeholder="Escribe comentario…"></textarea>
+        <button id="btnGuardar" class="btn btn-primary" style="margin-top:10px">Guardar comentario</button>
+      </div>
+    </div>
+  </section>
+  <!-- ========= FIN MODAL ========= -->
+
+  <!-- Librerías -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Tu lógica -->
+  <script src="home.js"></script>
+</body>
+</html>
