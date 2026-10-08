@@ -79,9 +79,9 @@ function renderMapFor(ev){
 
   if(!MAP.map){
     MAP.map = L.map(el,{zoomControl:true});
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 20,
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Tiles &copy; Esri &mdash; Sources: Esri, TomTom, Garmin, FAO, NOAA, USGS, &copy; OpenStreetMap contributors, and the GIS User Community'
     }).addTo(MAP.map);
     MAP.marker = L.marker(pos).addTo(MAP.map);
   }else{
@@ -292,9 +292,9 @@ function initHomeMap(){
   if (!el || HOME_MAP.map) return;
 
   HOME_MAP.map = L.map(el, { zoomControl: true, attributionControl: true });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 20,
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri &mdash; Sources: Esri, TomTom, Garmin, FAO, NOAA, USGS, &copy; OpenStreetMap contributors, and the GIS User Community'
   }).addTo(HOME_MAP.map);
   HOME_MAP.layer = L.layerGroup().addTo(HOME_MAP.map);
   HOME_MAP.map.setView([23.6345, -102.5528], 5);
@@ -368,6 +368,42 @@ function updateHomeMap(eventos){
 
   HOME_MAP.map.fitBounds(bounds, { padding:[24,24], maxZoom: 14 });
   setTimeout(()=> HOME_MAP.map && HOME_MAP.map.invalidateSize(), 50);
+}
+
+function centerHomeMapOnVisibleAlerts(){
+  if (!HOME_MAP.map) initHomeMap();
+  if (!HOME_MAP.map || !HOME_MAP.layer) return;
+
+  const bounds = L.featureGroup(HOME_MAP.layer.getLayers()).getBounds();
+  if (bounds.isValid()) HOME_MAP.map.fitBounds(bounds, { padding:[24,24], maxZoom:14 });
+  else HOME_MAP.map.setView([23.6345, -102.5528], 5);
+  setTimeout(()=> HOME_MAP.map && HOME_MAP.map.invalidateSize(), 100);
+}
+
+async function toggleHomeMapFullscreen(){
+  const mapCard = document.querySelector('.home-map-card');
+  if (!mapCard) return;
+
+  try{
+    if (document.fullscreenElement === mapCard) await document.exitFullscreen();
+    else await mapCard.requestFullscreen();
+  }catch(error){
+    console.error('No se pudo ampliar el mapa.', error);
+    alert('El navegador no permitió ampliar el mapa.');
+  }
+}
+
+function syncHomeMapFullscreenButton(){
+  const button = document.getElementById('btnFullscreenMap');
+  const mapCard = document.querySelector('.home-map-card');
+  if (!button || !mapCard) return;
+
+  const isFullscreen = document.fullscreenElement === mapCard;
+  const label = isFullscreen ? 'Restaurar mapa' : 'Ampliar mapa';
+  button.setAttribute('aria-label', isFullscreen ? 'Salir de pantalla completa' : 'Ampliar mapa a pantalla completa');
+  button.title = button.getAttribute('aria-label');
+  button.innerHTML = `<i class="fas ${isFullscreen ? 'fa-compress' : 'fa-expand'}" aria-hidden="true"></i><span>${label}</span>`;
+  setTimeout(()=> HOME_MAP.map && HOME_MAP.map.invalidateSize(), 120);
 }
 
 function renderEventos(eventos){
@@ -471,6 +507,53 @@ function getFilteredEvents(){
   }
 }
 
+function getVisibleEvents(eventos = getFilteredEvents()){
+  const query = (document.getElementById('busquedaEventos')?.value || '').trim().toLocaleLowerCase('es');
+  if (!query) return eventos || [];
+
+  return (eventos || []).filter(eventRecord=>{
+    const description = eventRecord.descripcion || '';
+    const visibleDescription = `${description.slice(0,40)}${description.length > 40 ? '...' : ''}`;
+    const searchableText = [
+      eventRecord.prioridad,
+      eventRecord.generado,
+      visibleDescription,
+      eventRecord.unidad,
+      eventRecord.estatus
+    ].map(value=>String(value ?? '')).join(' ').toLocaleLowerCase('es');
+    return searchableText.includes(query);
+  });
+}
+
+function exportVisibleEventsCsv(){
+  const visibleEvents = getVisibleEvents();
+  if (!visibleEvents.length){
+    alert('No hay alertas visibles para exportar.');
+    return;
+  }
+
+  const rows = [
+    ['Prioridad', 'Generado', 'Evento', 'Unidad', 'Estatus'],
+    ...visibleEvents.map(eventRecord=>[
+      eventRecord.prioridad || '',
+      eventRecord.generado || '',
+      eventRecord.descripcion || '',
+      eventRecord.unidad || '',
+      eventRecord.estatus || 'Sin atender'
+    ])
+  ];
+  const csvContent = rows.map(row=>row.map(value=>`"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const file = new Blob(['\uFEFF', csvContent], { type:'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `alertas_visibles_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
 /* Ripple helper (onda al click) */
 function attachRipple(el){
   if (!el) return;
@@ -516,23 +599,95 @@ function setFilter(kind){
   renderEventos(getFilteredEvents());
 }
 
-function getCurrentRole(){
-  return (sessionStorage.getItem('ROLE') || '').trim().toLowerCase();
+function getCurrentRoles(){
+  return (sessionStorage.getItem('ROLE') || '').toLowerCase().split(/[;,]/).map(role=>role.trim()).filter(Boolean);
+}
+
+function hasRole(role){
+  return getCurrentRoles().includes(role);
+}
+
+function canViewAlerts(){
+  return ['admin', 'supervisor', 'monitorista'].some(hasRole);
+}
+
+function canAccessCalibrador(){
+  return hasRole('admin') || hasRole('calibrador');
+}
+
+function canAccessInstalaciones(){
+  return hasRole('admin') || hasRole('instalador');
 }
 
 function canViewDashboard(){
-  const role = getCurrentRole();
-  return role === 'supervisor' || role === 'admin';
+  return hasRole('supervisor') || hasRole('admin');
 }
 
 function canManageUsers(){
-  return getCurrentRole() === 'admin';
+  return hasRole('admin');
 }
 
 function canAttendAlerts(){
-  const role = getCurrentRole();
-  return role === 'monitorista' || role === 'supervisor' || role === 'admin';
+  return canViewAlerts();
 }
+
+/***************  TEMA DE INTERFAZ  ***************/
+(function bindThemeToggle(){
+  const root = document.documentElement;
+  const button = document.getElementById('themeToggle');
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (!button) return;
+
+  function applyTheme(theme, persist=false){
+    const next = theme === 'light' ? 'light' : 'dark';
+    const isLight = next === 'light';
+    root.dataset.theme = next;
+    button.setAttribute('aria-pressed', String(isLight));
+    button.setAttribute('aria-label', isLight ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro');
+    button.title = isLight ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro';
+    if (themeMeta) themeMeta.setAttribute('content', isLight ? '#edf3f7' : '#07111f');
+    if (persist){
+      try { localStorage.setItem('alertrack-theme', next); } catch (_) {}
+    }
+  }
+
+  applyTheme(root.dataset.theme);
+  button.addEventListener('click', ()=>{
+    applyTheme(root.dataset.theme === 'light' ? 'dark' : 'light', true);
+  });
+})();
+
+/***************  FECHA Y HORA CDMX  ***************/
+(function initCdmxClock(){
+  const dateElement = document.getElementById('cdmxDate');
+  const timeElement = document.getElementById('cdmxTime');
+  if (!dateElement || !timeElement) return;
+
+  const dateFormatter = new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'America/Mexico_City',
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+  const timeFormatter = new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'America/Mexico_City',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  function updateClock(){
+    const now = new Date();
+    const dateText = dateFormatter.format(now).replace(/\./g, '');
+    dateElement.textContent = dateText.charAt(0).toUpperCase() + dateText.slice(1);
+    timeElement.textContent = timeFormatter.format(now);
+  }
+
+  updateClock();
+  setInterval(updateClock, 1000);
+})();
 
 /***************  GUARD de sesión  ***************/
 (function guard(){
@@ -545,14 +700,24 @@ document.getElementById('btnLogout')?.addEventListener('click', ()=>{
   sessionStorage.clear(); window.location.href = 'index.html';
 });
 
-/***************  NAVEGACIÓN (Home/Reportes/Usuarios)  ***************/
+/***************  NAVEGACIÓN (Home/Reportes/SLA/Mantenimiento/Usuarios)  ***************/
 const linkInicio    = document.getElementById('linkInicio');
 const linkDashboard = document.getElementById('linkDashboard');
+const linkSla       = document.getElementById('linkSla');
+const linkApps      = document.getElementById('linkApps');
+const linkMantenimiento = document.getElementById('linkMantenimiento');
 const linkUsuarios  = document.getElementById('linkUsuarios');
+const linkCalibrador = document.getElementById('linkCalibrador');
+const linkInstalaciones = document.getElementById('linkInstalaciones');
+const appsMenu      = document.getElementById('appsMenu');
+const appsSidebar   = document.querySelector('.sidebar');
 
 const secInicio     = document.getElementById('secInicio');
 const secDashboard  = document.getElementById('secDashboard');
+const secSla        = document.getElementById('secSla');
+const secMantenimiento = document.getElementById('secMantenimiento');
 const secUsuarios   = document.getElementById('secUsuarios');
+const secAccesos    = document.getElementById('secAccesos');
 
 // Bloques del Home para controlar sticky y scroll
 const toolbarAlerts = document.getElementById('toolbarAlerts') || document.querySelector('#secInicio .top-toolbar');
@@ -561,21 +726,27 @@ const tablaScroll   = document.querySelector('#secInicio .tabla-scroll');
 function applyRolePermissions(){
   const showDashboard = canViewDashboard();
   const showUsers = canManageUsers();
-  const role = getCurrentRole();
+  const roles = getCurrentRoles();
 
+  linkInicio?.classList.toggle('oculto', !canViewAlerts());
   linkDashboard?.classList.toggle('oculto', !showDashboard);
+  linkSla?.classList.toggle('oculto', !showDashboard);
+  linkMantenimiento?.classList.toggle('oculto', !canViewAlerts());
   linkUsuarios?.classList.toggle('oculto', !showUsers);
+  appsMenu?.classList.toggle('oculto', !canViewAlerts() && !canAccessCalibrador() && !canAccessInstalaciones());
+  linkCalibrador?.closest('li')?.classList.toggle('oculto', !canAccessCalibrador());
+  linkInstalaciones?.closest('li')?.classList.toggle('oculto', !canAccessInstalaciones());
   document.getElementById('btnGenReport')?.classList.toggle('oculto', !showDashboard);
   document.getElementById('btnExportCSV')?.classList.toggle('oculto', !showDashboard);
   const chip = document.getElementById('chipUser');
   const user = sessionStorage.getItem('USER') || '';
-  if (chip) chip.textContent = role ? `${user} (${role})` : user;
+  if (chip) chip.textContent = roles.length ? `${user} (${roles.join(', ')})` : user;
 
   syncUsersAdminUI();
 }
 
 function activate(link){
-  [linkInicio, linkDashboard, linkUsuarios].forEach(a=>a?.classList.remove('active'));
+  [linkInicio, linkDashboard, linkSla, linkApps, linkMantenimiento, linkUsuarios].forEach(a=>a?.classList.remove('active'));
   link?.classList.add('active');
 }
 
@@ -599,7 +770,7 @@ function showHomeHard(){
 }
 
 function showOnly(section){
-  [secInicio, secDashboard, secUsuarios].forEach(s=>{
+  [secInicio, secDashboard, secSla, secMantenimiento, secUsuarios, secAccesos].forEach(s=>{
     if(!s) return;
     s.classList.add('oculto');
     s.style.display = 'none';
@@ -612,7 +783,15 @@ function showOnly(section){
 }
 
 function go(link, section){
+  if ((section === secInicio || section === secMantenimiento) && !canViewAlerts()){
+    showOnly(secAccesos);
+    return;
+  }
   if (section === secDashboard && !canViewDashboard()){
+    go(linkInicio, secInicio);
+    return;
+  }
+  if (section === secSla && !canViewDashboard()){
     go(linkInicio, secInicio);
     return;
   }
@@ -625,6 +804,7 @@ function go(link, section){
   if (section === secInicio) renderEventos(getFilteredEvents());
   if (section === secUsuarios) cargarUsuarios().catch(console.error);
   if (section === secDashboard) cargarDashboardModule();
+  if (section === secSla) renderSlaModule();
 }
 
 /* Listeners navegación */
@@ -638,20 +818,37 @@ function bindNav(a, targetSection){
 }
 bindNav(linkInicio,   secInicio);
 bindNav(linkDashboard, secDashboard);
+bindNav(linkSla, secSla);
+bindNav(linkMantenimiento, secMantenimiento);
 bindNav(linkUsuarios, secUsuarios);
+linkCalibrador?.addEventListener('click', event=>{
+  if (!canAccessCalibrador()) event.preventDefault();
+});
+linkApps?.addEventListener('click', event=>{
+  event.preventDefault();
+  const expanded = Boolean(appsMenu?.classList.toggle('open'));
+  linkApps.setAttribute('aria-expanded', String(expanded));
+  appsSidebar?.classList.toggle('apps-open', expanded);
+});
+linkApps?.addEventListener('keydown', event=>{
+  if(event.key === ' ' || event.key === 'Spacebar'){
+    event.preventDefault();
+    linkApps.click();
+  }
+});
 applyRolePermissions();
 
 /***************  Búsqueda en tabla EVENTOS  ***************/
 (function bindSearch(){
   const input = document.getElementById('busquedaEventos');
   if (!input) return;
-  input.addEventListener('input', function(){
-    const filtro = this.value.toLowerCase();
-    document.querySelectorAll('#tablaEventos tbody tr').forEach(tr=>{
-      tr.style.display = tr.textContent.toLowerCase().includes(filtro) ? '' : 'none';
-    });
-  });
+  input.addEventListener('input', ()=>renderEventos(getFilteredEvents()));
 })();
+
+document.getElementById('btnCenterHomeMap')?.addEventListener('click', centerHomeMapOnVisibleAlerts);
+document.getElementById('btnFullscreenMap')?.addEventListener('click', toggleHomeMapFullscreen);
+document.getElementById('btnExportVisible')?.addEventListener('click', exportVisibleEventsCsv);
+document.addEventListener('fullscreenchange', syncHomeMapFullscreenButton);
 
 /***************  MODAL DETALLE ***************/
 function showModal(show=true){
@@ -1084,7 +1281,10 @@ function openUserModal(mode, user=null){
 
   document.getElementById('userUsuario').value = user?.usuario || '';
   document.getElementById('userPassword').value = user?.password || '';
-  document.getElementById('userRol').value = user?.rol || 'monitorista';
+  const selectedRoles = (user?.rol || 'monitorista').toLowerCase().split(/[;,]/).map(role=>role.trim());
+  document.querySelectorAll('input[name="userRol"]').forEach(input=>{
+    input.checked = selectedRoles.includes(input.value);
+  });
   document.getElementById('userCorreo').value = user?.correo || '';
   document.getElementById('userEstado').value = user?.estado || 'ACTIVO';
 
@@ -1174,7 +1374,7 @@ async function onSubmitUserForm(e){
   const form = e.currentTarget;
   const usuario = document.getElementById('userUsuario')?.value.trim() || '';
   const password = document.getElementById('userPassword')?.value.trim() || '';
-  const rol = document.getElementById('userRol')?.value.trim() || '';
+  const rol = Array.from(document.querySelectorAll('input[name="userRol"]:checked'), input=>input.value).join(',');
   const correo = document.getElementById('userCorreo')?.value.trim() || '';
   const estado = (document.getElementById('userEstado')?.value || '').trim().toUpperCase();
 
@@ -1282,6 +1482,309 @@ async function cargarUsuarios(){
   });
 })();
 
+/***************  INDICADORES SLA  ***************/
+const SLA_OFFICIAL_START = new Date('2026-07-02T00:00:00').getTime();
+const SLA_TARGETS = {
+  alta:  { response: 10, resolution: 60 },
+  media: { response: 20, resolution: 120 },
+  baja:  { response: 30, resolution: 240 }
+};
+const SLA_PRIORITY_COLORS = {
+  alta: '#ff6476',
+  media: '#ffb547',
+  baja: '#38d996'
+};
+
+function getSlaActions(comments){
+  if (!comments) return [];
+  const matches = [...String(comments).matchAll(
+    /\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]\s*([^:\n]+):/g
+  )];
+  return matches.map(match => ({
+    timestamp: (match[1] || '').trim(),
+    user: (match[2] || '').trim(),
+    ms: parseDateSmartToMs((match[1] || '').trim())
+  })).filter(action => action.ms > 0).sort((a,b) => a.ms - b.ms);
+}
+
+function isClosedStatus(status){
+  const normalized = normalizeStatus(status);
+  return normalized === 'ATENDIDO' || normalized === 'CERRADO';
+}
+
+function buildSlaRecord(event){
+  const generatedMs = parseDateSmartToMs(event.generado);
+  const actions = getSlaActions(event.comentarios);
+  const firstAction = actions[0] || null;
+  const lastAction = actions[actions.length - 1] || null;
+  const priority = ['alta','media','baja'].includes(String(event.prioridad || '').toLowerCase())
+    ? String(event.prioridad).toLowerCase()
+    : 'baja';
+  const targets = SLA_TARGETS[priority];
+  const closed = isClosedStatus(event.estatus);
+  const firstResponseMin = firstAction && generatedMs
+    ? Math.max(0, (firstAction.ms - generatedMs) / 60000)
+    : null;
+  const resolutionMin = closed && lastAction && generatedMs
+    ? Math.max(0, (lastAction.ms - generatedMs) / 60000)
+    : null;
+  const elapsedMin = generatedMs ? Math.max(0, (Date.now() - generatedMs) / 60000) : null;
+
+  let slaState = 'EN_CURSO';
+  if (firstResponseMin != null){
+    slaState = firstResponseMin <= targets.response ? 'CUMPLIDO' : 'VENCIDO';
+  } else if (elapsedMin != null && elapsedMin > targets.response){
+    slaState = 'VENCIDO';
+  }
+
+  return {
+    event,
+    generatedMs,
+    actions,
+    firstAction,
+    lastAction,
+    priority,
+    targets,
+    closed,
+    firstResponseMin,
+    resolutionMin,
+    elapsedMin,
+    slaState,
+    official: generatedMs >= SLA_OFFICIAL_START
+  };
+}
+
+function getSlaFilteredRecords(){
+  const fromValue = document.getElementById('slaDesde')?.value || '';
+  const toValue = document.getElementById('slaHasta')?.value || '';
+  const priority = document.getElementById('slaPrioridad')?.value || 'TODAS';
+  const state = document.getElementById('slaEstado')?.value || 'TODOS';
+  const fromMs = fromValue ? new Date(fromValue + 'T00:00:00').getTime() : 0;
+  const toMs = toValue ? new Date(toValue + 'T23:59:59').getTime() : Number.MAX_SAFE_INTEGER;
+
+  return EVENTS.map(buildSlaRecord).filter(record => {
+    if (!record.generatedMs || record.generatedMs < fromMs || record.generatedMs > toMs) return false;
+    if (priority !== 'TODAS' && record.priority !== priority) return false;
+    if (state !== 'TODOS' && record.slaState !== state) return false;
+    return true;
+  });
+}
+
+function average(values){
+  const valid = values.filter(value => Number.isFinite(value));
+  if (!valid.length) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function formatSlaDuration(minutes){
+  if (!Number.isFinite(minutes)) return '—';
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  if (minutes < 1440) return `${(minutes / 60).toFixed(minutes < 600 ? 1 : 0)} h`;
+  return `${(minutes / 1440).toFixed(minutes < 14400 ? 1 : 0)} d`;
+}
+
+function formatSlaDeviation(record){
+  const actual = record.firstResponseMin != null ? record.firstResponseMin : record.elapsedMin;
+  if (!Number.isFinite(actual)) return { text:'—', className:'' };
+  const diff = actual - record.targets.response;
+  if (record.slaState === 'EN_CURSO'){
+    return { text:`Quedan ${formatSlaDuration(Math.abs(diff))}`, className:'negative' };
+  }
+  if (diff > 0) return { text:`+${formatSlaDuration(diff)}`, className:'positive' };
+  return { text:`${formatSlaDuration(Math.abs(diff))} antes`, className:'negative' };
+}
+
+function slaStateLabel(state){
+  if (state === 'CUMPLIDO') return 'Dentro de SLA';
+  if (state === 'VENCIDO') return 'SLA vencido';
+  return 'En curso';
+}
+
+function slaStateClass(state){
+  if (state === 'CUMPLIDO') return 'ok';
+  if (state === 'VENCIDO') return 'late';
+  return 'running';
+}
+
+function setSlaText(id, value){
+  const element = document.getElementById(id);
+  if (element) element.textContent = value;
+}
+
+function renderSlaPriority(records){
+  const container = document.getElementById('slaPriorityBreakdown');
+  if (!container) return;
+
+  container.innerHTML = ['alta','media','baja'].map(priority => {
+    const list = records.filter(record => record.priority === priority);
+    const evaluable = list.filter(record => record.slaState !== 'EN_CURSO');
+    const compliant = evaluable.filter(record => record.slaState === 'CUMPLIDO').length;
+    const percent = evaluable.length ? Math.round(compliant * 100 / evaluable.length) : 0;
+    return `
+      <div class="sla-priority-row" style="--priority-color:${SLA_PRIORITY_COLORS[priority]}">
+        <span class="sla-priority-name">${priority}</span>
+        <div class="sla-progress" aria-label="${percent}% de cumplimiento">
+          <div class="sla-progress-fill" style="width:${percent}%">${evaluable.length ? percent + '%' : ''}</div>
+        </div>
+        <span class="sla-priority-meta">${compliant}/${evaluable.length} · ${SLA_TARGETS[priority].response} min</span>
+      </div>`;
+  }).join('');
+}
+
+function renderSlaUsers(records){
+  const tbody = document.getElementById('slaUsersBody');
+  if (!tbody) return;
+  const users = new Map();
+
+  function ensureUser(name){
+    const key = name || 'Sin asignar';
+    if (!users.has(key)){
+      users.set(key, { name:key, taken:0, closed:0, responseTimes:[], compliant:0, evaluable:0 });
+    }
+    return users.get(key);
+  }
+
+  records.forEach(record => {
+    if (record.firstAction){
+      const user = ensureUser(record.firstAction.user);
+      user.taken++;
+      if (record.firstResponseMin != null) user.responseTimes.push(record.firstResponseMin);
+      if (record.slaState !== 'EN_CURSO'){
+        user.evaluable++;
+        if (record.slaState === 'CUMPLIDO') user.compliant++;
+      }
+    }
+    if (record.closed && record.lastAction){
+      ensureUser(record.lastAction.user).closed++;
+    }
+  });
+
+  const rows = [...users.values()].sort((a,b) =>
+    (b.taken + b.closed) - (a.taken + a.closed) || a.name.localeCompare(b.name)
+  );
+
+  if (!rows.length){
+    tbody.innerHTML = '<tr><td colspan="5"><div class="sla-empty">Aún no hay acciones atribuidas a usuarios en este periodo.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(user => {
+    const avgResponse = average(user.responseTimes);
+    const score = user.evaluable ? Math.round(user.compliant * 100 / user.evaluable) : null;
+    return `<tr>
+      <td><span class="sla-user-name"><i class="fas fa-user"></i>${escapeHtml(user.name)}</span></td>
+      <td>${user.taken}</td>
+      <td>${user.closed}</td>
+      <td>${formatSlaDuration(avgResponse)}</td>
+      <td><span class="sla-score">${score == null ? '—' : score + '%'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSlaDetail(records){
+  const tbody = document.getElementById('slaDetailBody');
+  if (!tbody) return;
+  const sorted = records.slice().sort((a,b) => b.generatedMs - a.generatedMs);
+  setSlaText('slaRecordCount', `${sorted.length} ${sorted.length === 1 ? 'registro' : 'registros'}`);
+
+  if (!sorted.length){
+    tbody.innerHTML = '<tr><td colspan="8"><div class="sla-empty">No hay alertas para los filtros seleccionados.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(record => {
+    const deviation = formatSlaDeviation(record);
+    const priorityColor = SLA_PRIORITY_COLORS[record.priority];
+    const historyTag = record.official ? '' : '<span class="sla-history-tag">Histórico</span>';
+    return `<tr>
+      <td>${escapeHtml(record.event.folio || '—')}</td>
+      <td>${escapeHtml(record.event.generado || '—')}</td>
+      <td><span class="sla-priority-pill" style="--priority-color:${priorityColor}">${record.priority}</span></td>
+      <td>${escapeHtml(record.firstAction?.user || 'Sin asignar')}</td>
+      <td>${record.firstResponseMin == null ? 'Sin respuesta' : formatSlaDuration(record.firstResponseMin)}</td>
+      <td>${record.targets.response} min</td>
+      <td><span class="sla-deviation ${deviation.className}">${deviation.text}</span></td>
+      <td>
+        <span class="sla-state ${slaStateClass(record.slaState)}">${slaStateLabel(record.slaState)}</span>
+        ${historyTag}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSlaModule(){
+  if (!canViewDashboard()) return;
+  const records = getSlaFilteredRecords();
+  const evaluable = records.filter(record => record.slaState !== 'EN_CURSO');
+  const compliant = evaluable.filter(record => record.slaState === 'CUMPLIDO');
+  const breached = records.filter(record => record.slaState === 'VENCIDO');
+  const pendingBreached = breached.filter(record => !record.firstAction);
+  const lateResponded = breached.filter(record => record.firstAction);
+  const responded = records.filter(record => record.firstResponseMin != null);
+  const closed = records.filter(record => record.resolutionMin != null);
+  const compliance = evaluable.length ? Math.round(compliant.length * 100 / evaluable.length) : null;
+  const avgResponse = average(responded.map(record => record.firstResponseMin));
+  const avgClosure = average(closed.map(record => record.resolutionMin));
+
+  setSlaText('slaCumplimiento', compliance == null ? '—' : `${compliance}%`);
+  setSlaText('slaCumplimientoMeta', `${compliant.length} de ${evaluable.length} alertas evaluables`);
+  setSlaText('slaPromedioRespuesta', formatSlaDuration(avgResponse));
+  setSlaText('slaRespuestaMeta', `${responded.length} ${responded.length === 1 ? 'alerta con respuesta' : 'alertas con respuesta'}`);
+  setSlaText('slaVencidas', breached.length);
+  setSlaText('slaVencidasMeta', `${pendingBreached.length} pendientes · ${lateResponded.length} tardías`);
+  setSlaText('slaPromedioCierre', formatSlaDuration(avgClosure));
+  setSlaText('slaCierreMeta', `${closed.length} ${closed.length === 1 ? 'alerta cerrada' : 'alertas cerradas'}`);
+
+  const fromValue = document.getElementById('slaDesde')?.value || '';
+  const scopeNote = document.getElementById('slaScopeNote');
+  if (scopeNote){
+    scopeNote.textContent = fromValue && new Date(fromValue + 'T00:00:00').getTime() >= SLA_OFFICIAL_START
+      ? 'Periodo correspondiente a la medición oficial.'
+      : 'Incluye rezago histórico anterior al 02/07/2026.';
+  }
+
+  renderSlaPriority(records);
+  renderSlaUsers(records);
+  renderSlaDetail(records);
+}
+
+function exportSlaCsv(){
+  if (!canViewDashboard()) return;
+  const records = getSlaFilteredRecords();
+  if (!records.length){ alert('No hay datos SLA para exportar.'); return; }
+  const headers = ['Folio','Generada','Unidad','Evento','Prioridad','Responsable','Primera respuesta min','Objetivo min','Desviacion min','Estado SLA','Tipo de medicion'];
+  const rows = records.map(record => {
+    const actual = record.firstResponseMin != null ? record.firstResponseMin : record.elapsedMin;
+    const deviation = Number.isFinite(actual) ? actual - record.targets.response : '';
+    return [
+      record.event.folio,
+      record.event.generado,
+      record.event.unidad,
+      record.event.descripcion,
+      record.priority,
+      record.firstAction?.user || '',
+      record.firstResponseMin == null ? '' : record.firstResponseMin.toFixed(2),
+      record.targets.response,
+      deviation === '' ? '' : deviation.toFixed(2),
+      slaStateLabel(record.slaState),
+      record.official ? 'Oficial' : 'Historico'
+    ].map(csvCell);
+  });
+  const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `AlerTrack_SLA_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('btnSlaActualizar')?.addEventListener('click', renderSlaModule);
+document.getElementById('btnSlaExportar')?.addEventListener('click', exportSlaCsv);
+document.getElementById('slaPrioridad')?.addEventListener('change', renderSlaModule);
+document.getElementById('slaEstado')?.addEventListener('change', renderSlaModule);
+
 /***************  DASHBOARD  ***************/
 const BAR_COLORS = ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#f97316','#6366f1','#14b8a6'];
 
@@ -1341,8 +1844,9 @@ function eventLabelHtml(evento){
 function renderEventos(eventos){
   const tbody = document.getElementById('tbodyEventos');
   if(!tbody) return;
+  const visibleEvents = getVisibleEvents(eventos);
   tbody.innerHTML = '';
-  eventos.forEach(ev=>{
+  visibleEvents.forEach(ev=>{
     const tr = document.createElement('tr');
     const eventoTxt = (ev.descripcion || '');
     const eventoShort = `${eventoTxt.slice(0,40)}${eventoTxt.length > 40 ? '...' : ''}`;
@@ -1362,7 +1866,7 @@ function renderEventos(eventos){
     tr.addEventListener('click', ()=> openDetalle(ev));
     tbody.appendChild(tr);
   });
-  updateHomeMap(eventos);
+  updateHomeMap(visibleEvents);
 }
 
 function renderBarChart(containerId, dataMap, maxBars){
@@ -1528,12 +2032,30 @@ document.getElementById('btnExportCSV')?.addEventListener('click', () => {
   if (rptHasta) rptHasta.value = fmt(hoy);
 })();
 
+/* SLA: mostrar un año para incluir el histórico disponible y permitir comparación. */
+(function initSlaDates(){
+  const today = new Date();
+  const yearAgo = new Date(today);
+  yearAgo.setDate(yearAgo.getDate() - 365);
+  const format = date => date.toISOString().slice(0,10);
+  const from = document.getElementById('slaDesde');
+  const to = document.getElementById('slaHasta');
+  if (from) from.value = format(yearAgo);
+  if (to) to.value = format(today);
+})();
+
 /***************  Inicio ***************/
 (async function init(){
-  go(linkInicio, secInicio);
-  await cargarMapaPrioridad();
-  await cargarDashboard();
-  updateCardUI();
+  if (canViewAlerts()){
+    go(linkInicio, secInicio);
+    await cargarMapaPrioridad();
+    await cargarDashboard();
+    updateCardUI();
+  } else if (canAccessCalibrador()){
+    window.location.href = 'CALIBRADOR%20ONLINE/home.html';
+  } else {
+    showOnly(secAccesos);
+  }
   // Refresco opcional:
   // setInterval(async ()=>{ await cargarMapaPrioridad(); await cargarDashboard(); }, 60000);
 })();
