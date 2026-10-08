@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitar Acceso - CALIBRADOR ONLINE</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <link rel="preload" href="fondo2.jpg" as="image"> <!-- Preload de la imagen de fondo -->
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            background-image: url('fondo2.png'); /* Imagen de fondo en la carpeta raíz */
+            background-size: cover;
+            background-position: center;
+            justify-content: center; /* Centra el contenido */
+        }
+        body {
+            font-family: Arial, sans-serif;
+            align-items: center;
+            justify-content: space-between; /* Distribuye el contenido y el pie de página */
+        }
+        .header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: #000; /* Color negro */
+            color: #fff; /* Color blanco */
+            text-align: center;
+            padding: 15px 0; /* Espacio para separar etiquetas */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1000; /* Asegura que el header esté por encima del resto del contenido */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .header img {
+            position: absolute;
+            left: 20px;
+            top: 10px;
+            height: 55px;
+        }
+        .header h1 {
+            margin: 0;
+            flex-grow: 1; /* Permite que el título crezca y ocupe el espacio disponible */
+        }
+        .header .date {
+            position: absolute;
+            right: 20px;
+            bottom: 10px;
+            font-size: 0.9em;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.8); /* Fondo blanco semitransparente */
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 300px; /* Ancho máximo */
+            margin-top: 100px; /* Margen superior para separar del header */
+        }
+        .form-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 40px; /* Mayor espacio debajo del título */
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="email"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin-bottom: 1px; /* Espacio entre campos */
+        }
+        .btn-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+        button {
+            padding: 10px 0;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 5px; /* Espacio entre botones */
+        }
+        .btn-primary {
+            background-color: #28a745;
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background-color: #218838;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: #fff;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="logo.png" alt="Logo"> 
+        <h1>TTC CALIBRADOR ONLINE</h1>
+        <div class="date" id="fecha"></div>
+    </div>
+    <div class="container">
+        <div class="form-title">Solicitar Acceso</div>
+        <form id="solicitarForm">
+            <div class="form-group">
+                <label for="name">Nombre</label>
+                <input type="text" id="name" name="name" placeholder="Ingrese su nombre" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Correo Electrónico</label>
+                <input type="email" id="email" name="email" placeholder="Ingrese su correo" required>
+            </div>
+            <div class="btn-container">
+                <button type="submit" class="btn-primary">Enviar Solicitud</button>
+                <button type="button" class="btn-secondary" onclick="window.location.href='login.html'">Regresar al Inicio</button>
+            </div>
+        </form>
+    </div>
+    <script>
+        document.getElementById('solicitarForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+
+            const subject = encodeURIComponent('Solicitud de Acceso');
+            const body = encodeURIComponent(`Nombre: ${name}\nCorreo Electrónico: ${email}`);
+
+            window.location.href = `mailto:proyectosespeciales@trackingcenter.mx?subject=${subject}&body=${body}`;
+        });
+
+        function mostrarFecha() {
+            const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+            const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const fecha = new Date();
+            const diaSemana = diasSemana[fecha.getDay()];
+            const dia = String(fecha.getDate()).padStart(2, '0');
+            const mes = meses[fecha.getMonth()];
+            const anio = fecha.getFullYear();
+            const fechaFormateada = `${diaSemana} ${dia} de ${mes} de ${anio}`;
+            document.getElementById('fecha').innerText = fechaFormateada;
+        }
+
+        window.onload = mostrarFecha;
+    </script>
+</body>
+</html>

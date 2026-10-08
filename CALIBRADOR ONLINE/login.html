@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - CALIBRADOR ONLINE</title>
+    <script src="auth.js"></script>
+    <script>window.location.replace(MCCalibradorAuth.hasAccess() ? 'home.html' : '../index.html');</script>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            background-image: url('fondofinal.png'); /* Imagen de fondo en la carpeta raíz */
+            background-size: cover;
+            background-position: center;
+            justify-content: center; /* Centra el contenido */
+        }
+        body {
+            font-family: Arial, sans-serif;
+            align-items: center;
+            justify-content: space-between; /* Distribuye el contenido y el pie de página */
+        }
+        .header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: #000; /* Color negro */
+            color: #fff; /* Color blanco */
+            text-align: center;
+            padding: 15px 0; /* Espacio para separar etiquetas */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1000; /* Asegura que el header esté por encima del resto del contenido */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .header img {
+            position: absolute;
+            left: 20px;
+            top: 10px;
+            height: 55px;
+        }
+        .header h1 {
+            margin: 0;
+            flex-grow: 1; /* Permite que el título crezca y ocupe el espacio disponible */
+        }
+        .header .date {
+            position: absolute;
+            right: 20px;
+            bottom: 10px;
+            font-size: 0.9em;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.8); /* Fondo blanco semitransparente */
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 300px; /* Ancho máximo */
+            margin-top: 100px; /* Margen superior para separar del header */
+        }
+        .form-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 40px; /* Mayor espacio debajo del título */
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin-bottom: 1px; /* Mayor espacio entre campos */
+        }
+        .btn-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+        button {
+            min-height: 42px;
+            padding: 10px 14px;
+            border: none;
+            border-radius: 7px;
+            font-size: 1em;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 7px;
+            box-shadow: 0 4px 10px rgba(22, 49, 67, 0.18);
+            transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 15px rgba(22, 49, 67, 0.24);
+            filter: saturate(1.08);
+        }
+        button:focus-visible {
+            outline: 3px solid #183b50;
+            outline-offset: 3px;
+        }
+        .btn-primary {
+            background: linear-gradient(110deg, #128468 0%, #2ab58c 100%);
+            color: #fff;
+        }
+        .btn-secondary {
+            background: linear-gradient(110deg, #2468c7 0%, #35a7d5 100%);
+            color: #fff;
+        }
+        .footer-icon {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: auto; /* Asegura que el pie de página esté en la parte inferior */
+            margin-bottom: 20px; /* Espacio en la parte inferior */
+        }
+        .footer-icon img {
+            height: 15px;
+            vertical-align: middle;
+            margin-right: 10px; /* Espacio entre la imagen y el texto */
+        }
+        .footer-icon span {
+            font-size: 0.7em;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="logo.png" alt="Logo"> 
+        <h1>MC CALIBRADOR ONLINE</h1>
+        <div class="date" id="fecha"></div>
+    </div>
+    <div class="container">
+        <div class="form-title">Inicio de sesión</div>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Usuario</label>
+                <input type="text" id="username" placeholder="Ingrese su usuario" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Contraseña</label>
+                <input type="password" id="password" placeholder="Ingrese su contraseña" required>
+            </div>
+            <div class="btn-container">
+                <button type="submit" class="btn-primary">Iniciar Sesión</button>
+                <button type="button" class="btn-secondary" onclick="window.location.href='solicitar-acceso.html'">Solicitar Acceso</button>
+            </div>
+        </form>
+    </div>
+    <div class="footer-icon">
+        <a href="https://www.monitorcenterslp.com/" target="_blank">
+            <img src="logofot.png" alt="Logo"> 
+            <span>MONITOR CENTER</span>
+        </a>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            window.location.href = '../index.html';
+        });
+
+        function mostrarFecha() {
+            const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+            const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const fecha = new Date();
+            const diaSemana = diasSemana[fecha.getDay()];
+            const dia = String(fecha.getDate()).padStart(2, '0');
+            const mes = meses[fecha.getMonth()];
+            const anio = fecha.getFullYear();
+            const fechaFormateada = `${diaSemana} ${dia} de ${mes} de ${anio}`;
+            document.getElementById('fecha').innerText = fechaFormateada;
+        }
+
+        window.onload = mostrarFecha;
+    </script>
+</body>
+</html>
