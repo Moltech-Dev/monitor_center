@@ -43,6 +43,19 @@ let CURRENT_FILTER = 'TODOS'; // 'TODOS' | 'PENDIENTES' | 'SEGUIMIENTO'
 let USERS = [];               // usuarios en memoria para administrar
 let USERS_META = { headers: [], rawHeaders: [], fields: {} };
 
+// === Alertas en vivo + sonido ===
+const LIVE_CHECK_MS = 10000;                 // revisión ligera de filas nuevas
+const LIVE_FULL_MS  = 60000;                 // recarga completa (cambios de estatus de otros operadores)
+const SOUND_EVENTS  = ['VELOCIDAD ALTA MC']; // eventos que suenan (texto de la columna Evento)
+const SOUND_REPEAT  = 3;                     // veces que suena la sirena por llegada
+const SOUND_VOLUME  = 0.25;                  // 0 a 1
+let SEEN_KEYS     = null;                    // Set de alertas ya vistas (null = primera carga)
+const BLINK_KEYS  = new Set();               // alertas cuya fila parpadea
+let AUTO_REFRESH  = false;                   // true durante el refresco automático
+let LIVE_BUSY     = false;
+let LIVE_ROWS     = null;                    // filas con folio en EVENTOS (última revisión)
+let AUDIO_CTX     = null;
+
 // Cache de direcciones (lat,lng => texto)
 const ADDRESS_CACHE = new Map();
 let HOME_MAP = { map:null, layer:null };
@@ -327,7 +340,7 @@ function updateHomeMap(eventos){
   count.innerHTML = `<i class="fas fa-location-dot"></i> ${withCoords.length} ubicaciones`;
 
   if (!withCoords.length){
-    HOME_MAP.map.setView([23.6345, -102.5528], 5);
+    if (!AUTO_REFRESH) HOME_MAP.map.setView([23.6345, -102.5528], 5);
     if (!document.getElementById('homeMapEmptyState')){
       const empty = document.createElement('div');
       empty.id = 'homeMapEmptyState';
@@ -366,7 +379,8 @@ function updateHomeMap(eventos){
     bounds.push([pos.lat, pos.lng]);
   });
 
-  HOME_MAP.map.fitBounds(bounds, { padding:[24,24], maxZoom: 14 });
+  // En refresco automático se respeta el zoom/posición que tenga el operador
+  if (!AUTO_REFRESH) HOME_MAP.map.fitBounds(bounds, { padding:[24,24], maxZoom: 14 });
   setTimeout(()=> HOME_MAP.map && HOME_MAP.map.invalidateSize(), 50);
 }
 
@@ -740,7 +754,7 @@ function applyRolePermissions(){
   document.getElementById('btnExportCSV')?.classList.toggle('oculto', !showDashboard);
   const chip = document.getElementById('chipUser');
   const user = sessionStorage.getItem('USER') || '';
-  if (chip) chip.textContent = roles.length ? `${user} (${roles.join(', ')})` : user;
+  if (chip) { chip.textContent = user; chip.title = roles.join(', '); }
 
   syncUsersAdminUI();
 }
@@ -930,6 +944,7 @@ function attachGuardHandlers(ta){
 
 function openDetalle(ev){
   CURRENT = ev;
+  stopRowAlarm(ev);
 
   document.getElementById('detTitulo').textContent  = ev.descripcion || '—';
   document.getElementById('detFecha').textContent   = ev.generado || '—';
@@ -1118,6 +1133,9 @@ async function cargarDashboard(){
     /* === ORDENAR POR FECHA (más recientes primero) === */
     EVENTS.sort((a, b) => parseDateSmartToMs(b.generado) - parseDateSmartToMs(a.generado));
 
+    // Alertas nuevas: sonido + parpadeo (solo eventos configurados)
+    detectNewAlerts(EVENTS);
+
     const k = computeCounters(EVENTS);
     setText('nTodos',       k.todos);
     setText('nPendientes',  k.pendientes);
@@ -1126,6 +1144,8 @@ async function cargarDashboard(){
     // Render según filtro activo
     renderEventos(getFilteredEvents());
   }catch(err){
+    // En refresco automático no se borra la tabla por un fallo de red momentáneo
+    if (AUTO_REFRESH){ console.warn('Refresco automático falló:', err); return; }
     console.error('Dashboard error:', err);
     setText('nTodos',0); setText('nPendientes',0); setText('nSeguimiento',0);
     const tbody = document.getElementById('tbodyEventos');
@@ -1863,6 +1883,8 @@ function renderEventos(eventos){
       </td>
     `;
     tr.style.cursor = 'pointer';
+    tr.dataset.alertKey = eventKey(ev);
+    if (BLINK_KEYS.has(tr.dataset.alertKey)) tr.classList.add('row-alarm');
     tr.addEventListener('click', ()=> openDetalle(ev));
     tbody.appendChild(tr);
   });
@@ -2044,18 +2066,184 @@ document.getElementById('btnExportCSV')?.addEventListener('click', () => {
   if (to) to.value = format(today);
 })();
 
+/***************  ALERTAS EN VIVO + SONIDO  ***************/
+// Folio + fecha + unidad + evento: en la hoja hay folios repetidos, el folio solo no basta
+function eventKey(ev){
+  return `${ev.folio}|${ev.generado}|${ev.unidad}|${ev.descripcion}`;
+}
+
+/** Compara contra las alertas ya vistas; la primera carga solo memoriza (no suena). */
+function detectNewAlerts(list){
+  const keys = list.map(eventKey);
+  if (!SEEN_KEYS){ SEEN_KEYS = new Set(keys); return; }
+
+  const nuevas = list.filter(ev => !SEEN_KEYS.has(eventKey(ev)));
+  keys.forEach(k => SEEN_KEYS.add(k));
+
+  // Deja de parpadear lo que otro operador ya tomó o atendió
+  list.forEach(ev => { if (!isPendingStatus(ev.estatus)) BLINK_KEYS.delete(eventKey(ev)); });
+
+  const sonoras = nuevas.filter(ev =>
+    SOUND_EVENTS.includes(normVal(ev.descripcion || '')) && isPendingStatus(ev.estatus)
+  );
+  if (!sonoras.length) return;
+
+  sonoras.forEach(ev => BLINK_KEYS.add(eventKey(ev)));
+  playSiren(SOUND_REPEAT); // varias en la misma revisión suenan una sola tanda
+}
+
+function stopRowAlarm(ev){
+  const key = eventKey(ev);
+  if (!BLINK_KEYS.delete(key)) return;
+  document.querySelectorAll('#tbodyEventos tr.row-alarm').forEach(tr=>{
+    if (tr.dataset.alertKey === key) tr.classList.remove('row-alarm');
+  });
+}
+
+/* --- Sonido (sirena generada por el navegador, sin archivos) --- */
+function isSoundOn(){
+  try { return localStorage.getItem('mc-sound') !== 'off'; } catch(_) { return true; }
+}
+function setSoundOn(on){
+  try { localStorage.setItem('mc-sound', on ? 'on' : 'off'); } catch(_) {}
+}
+function getAudioCtx(){
+  if (!AUDIO_CTX){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    AUDIO_CTX = new Ctx();
+    AUDIO_CTX.onstatechange = updateSoundButton;
+  }
+  return AUDIO_CTX;
+}
+function unlockAudio(){
+  const ctx = getAudioCtx();
+  if (ctx && ctx.state === 'suspended') ctx.resume().then(updateSoundButton).catch(()=>{});
+}
+
+/** Sirena tipo "wail": sube y baja de tono; `times` ciclos seguidos. */
+function playSiren(times = SOUND_REPEAT){
+  if (!isSoundOn()) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
+
+  const cycle = 1.2, gap = .25;
+  const t0 = ctx.currentTime + .05;
+  for (let i = 0; i < times; i++){
+    const start = t0 + i * (cycle + gap);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME, start + .05);
+    gain.gain.setValueAtTime(SOUND_VOLUME, start + cycle - .1);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + cycle);
+    gain.connect(ctx.destination);
+
+    ['sawtooth', 'square'].forEach((type, idx)=>{
+      const osc = ctx.createOscillator();
+      const detune = idx ? 1.012 : 1;
+      osc.type = type;
+      osc.frequency.setValueAtTime(650 * detune, start);
+      osc.frequency.linearRampToValueAtTime(1500 * detune, start + cycle / 2);
+      osc.frequency.linearRampToValueAtTime(650 * detune, start + cycle);
+      osc.connect(gain);
+      osc.start(start);
+      osc.stop(start + cycle + .02);
+    });
+  }
+}
+
+/** Botón de bocina: activo / bloqueado por el navegador (falta un clic) / silenciado. */
+function updateSoundButton(){
+  const btn = document.getElementById('btnSound');
+  if (!btn) return;
+  const on = isSoundOn();
+  const locked = on && (!AUDIO_CTX || AUDIO_CTX.state !== 'running');
+  btn.classList.toggle('is-off', !on);
+  btn.classList.toggle('is-locked', locked);
+  btn.setAttribute('aria-pressed', String(on));
+  const label = !on ? 'Sonido de alertas silenciado (clic para activar)'
+              : locked ? 'Haz clic para habilitar el sonido de alertas'
+              : 'Sonido de alertas activo (clic para silenciar)';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+  const icon = btn.querySelector('i');
+  if (icon) icon.className = `fa-solid ${on ? 'fa-bell' : 'fa-bell-slash'}`;
+}
+
+function bindSoundButton(){
+  const btn = document.getElementById('btnSound');
+  if (!btn) return;
+  btn.classList.toggle('oculto', !canViewAlerts());
+  btn.addEventListener('click', ()=>{
+    const ctx = getAudioCtx();
+    const locked = !ctx || ctx.state !== 'running';
+    if (isSoundOn() && !locked){
+      setSoundOn(false);
+    } else {
+      setSoundOn(true);
+      unlockAudio();
+      playSiren(1); // prueba
+    }
+    updateSoundButton();
+  });
+  // Cualquier clic o tecla en la página habilita el audio (política de autoplay del navegador)
+  ['pointerdown', 'keydown'].forEach(evt =>
+    document.addEventListener(evt, ()=>{ if (isSoundOn()) unlockAudio(); }, { capture:true })
+  );
+  getAudioCtx();
+  updateSoundButton();
+}
+
+/* --- Revisión periódica --- */
+async function refreshAlertsSilently(){
+  AUTO_REFRESH = true;
+  try { await cargarDashboard(); }
+  finally { AUTO_REFRESH = false; }
+}
+
+/** Cada 10 s: lee solo la columna Folio; si cambió el número de filas, recarga todo. */
+async function liveCheck(){
+  if (LIVE_BUSY) return;
+  LIVE_BUSY = true;
+  try{
+    const values = await fetchSheet('EVENTOS!A:A');
+    const rows = values.length;
+    if (LIVE_ROWS !== null && rows !== LIVE_ROWS) await refreshAlertsSilently();
+    LIVE_ROWS = rows;
+  }catch(err){
+    console.warn('Revisión en vivo falló:', err);
+  }finally{
+    LIVE_BUSY = false;
+  }
+}
+
+async function fullRefresh(){
+  if (LIVE_BUSY) return;
+  LIVE_BUSY = true;
+  try { await refreshAlertsSilently(); }
+  finally { LIVE_BUSY = false; }
+}
+
+function startLiveAlerts(){
+  liveCheck();
+  setInterval(liveCheck, LIVE_CHECK_MS);
+  setInterval(fullRefresh, LIVE_FULL_MS);
+}
+
 /***************  Inicio ***************/
 (async function init(){
   if (canViewAlerts()){
     go(linkInicio, secInicio);
+    bindSoundButton();
     await cargarMapaPrioridad();
     await cargarDashboard();
     updateCardUI();
+    startLiveAlerts();
   } else if (canAccessCalibrador()){
     window.location.href = 'CALIBRADOR%20ONLINE/home.html';
   } else {
+    document.getElementById('btnSound')?.classList.add('oculto');
     showOnly(secAccesos);
   }
-  // Refresco opcional:
-  // setInterval(async ()=>{ await cargarMapaPrioridad(); await cargarDashboard(); }, 60000);
 })();
