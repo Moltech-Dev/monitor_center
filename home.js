@@ -46,8 +46,8 @@ let USERS_META = { headers: [], rawHeaders: [], fields: {} };
 // === Alertas en vivo + sonido ===
 const LIVE_CHECK_MS = 10000;                 // revisión ligera de filas nuevas
 const LIVE_FULL_MS  = 60000;                 // recarga completa (cambios de estatus de otros operadores)
-const SOUND_EVENTS  = ['VELOCIDAD ALTA MC']; // eventos que suenan (texto de la columna Evento)
-const SOUND_REPEAT  = 3;                     // veces que suena la sirena por llegada
+const SOUND_PRIORITIES = ['alta'];           // prioridades que suenan (hoja "Prioridad Eventos")
+const SOUND_REPEAT  = 10;                    // veces que suena la sirena por llegada
 const SOUND_VOLUME  = 0.25;                  // 0 a 1
 let SEEN_KEYS     = null;                    // Set de alertas ya vistas (null = primera carga)
 const BLINK_KEYS  = new Set();               // alertas cuya fila parpadea
@@ -209,6 +209,7 @@ async function cargarMapaPrioridad(){
     });
   }catch(err){
     console.warn('No se pudo cargar "Prioridad Eventos":', err);
+    if (AUTO_REFRESH) return; // conserva el mapa anterior ante un fallo momentáneo
     PRIORITY_MAP = new Map(); // sin mapa; default en mapEvento => 'baja'
   }
 }
@@ -2084,7 +2085,7 @@ function detectNewAlerts(list){
   list.forEach(ev => { if (!isPendingStatus(ev.estatus)) BLINK_KEYS.delete(eventKey(ev)); });
 
   const sonoras = nuevas.filter(ev =>
-    SOUND_EVENTS.includes(normVal(ev.descripcion || '')) && isPendingStatus(ev.estatus)
+    SOUND_PRIORITIES.includes(ev.prioridad) && isPendingStatus(ev.estatus)
   );
   if (!sonoras.length) return;
 
@@ -2198,7 +2199,10 @@ function bindSoundButton(){
 /* --- Revisión periódica --- */
 async function refreshAlertsSilently(){
   AUTO_REFRESH = true;
-  try { await cargarDashboard(); }
+  try {
+    await cargarMapaPrioridad(); // toma cambios en "Prioridad Eventos" sin recargar la página
+    await cargarDashboard();
+  }
   finally { AUTO_REFRESH = false; }
 }
 
